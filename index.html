@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ruleta de Números - Blanco y Negro</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #000;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+      user-select: none;
+    }
+    h1 {
+      margin-bottom: 12px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+    }
+    .controls {
+      margin-bottom: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      max-width: 600px;
+    }
+    button, input {
+      font-size: 16px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: none;
+      outline: none;
+      cursor: pointer;
+      transition: background-color 0.25s ease;
+      min-width: 100px;
+      text-align: center;
+    }
+    button {
+      background: #fff;
+      color: #000;
+      font-weight: 600;
+      box-shadow: 0 0 6px rgba(255,255,255,0.2);
+    }
+    button:hover {
+      background: #222;
+      color: #fff;
+      box-shadow: 0 0 10px #fff;
+    }
+    input {
+      background: #222;
+      color: #eee;
+      border: 1.5px solid #444;
+    }
+    input::placeholder { color: #666; }
+    #wheelCanvas {
+      background: #111;
+      border: 8px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 20px white;
+      cursor: pointer;
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+    .pointer {
+      width: 0; height: 0;
+      border-left: 25px solid transparent;
+      border-right: 25px solid transparent;
+      border-bottom: 40px solid #fff;
+      margin-top: 15px;
+      filter: drop-shadow(0 0 5px white);
+    }
+    #winnerBox {
+      margin-top: 25px;
+      font-size: 28px;
+      font-weight: 700;
+      background: #fff;
+      color: #000;
+      padding: 20px 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 30px #fff;
+      min-width: 280px;
+      text-align: center;
+      display: none;
+      user-select: text;
+    }
+    .history {
+      margin-top: 35px;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+      color: #aaa;
+      font-size: 16px;
+    }
+    .history h2 {
+      margin-bottom: 10px;
+      color: #eee;
+    }
+    .history ul {
+      list-style: none;
+      padding: 0;
+      max-height: 140px;
+      overflow-y: auto;
+      border: 1px solid #444;
+      border-radius: 6px;
+      background: #111;
+      box-shadow: inset 0 0 8px #222;
+    }
+    .history li {
+      padding: 4px 0;
+      border-bottom: 1px solid #222;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Ruleta de Números</h1>
+  <div class="controls">
+    <button onclick="initWheel(10)">Cargar 10 números</button>
+    <button onclick="initWheel(112)">Cargar 112 números</button>
+    <input id="addNumberInput" type="number" placeholder="Agregar número" min="1" />
+    <button onclick="addNumber()">Agregar</button>
+    <input id="removeNumberInput" type="number" placeholder="Eliminar número" min="1" />
+    <button onclick="removeNumber()">Eliminar</button>
+    <button id="spinBtn" onclick="spinWheel()" disabled>Girar</button>
+    <button onclick="resetWheel()">Reiniciar</button>
+  </div>
+
+  <canvas id="wheelCanvas" width="800" height="800" title="Ruleta de números"></canvas>
+  <div class="pointer" aria-hidden="true"></div>
+  <div id="winnerBox" role="alert" aria-live="polite"></div>
+
+  <div class="history" aria-label="Historial de ganadores">
+    <h2>Historial de Ganadores</h2>
+    <ul id="historyList" role="list"></ul>
+  </div>
+
+<script>
+  const canvas = document.getElementById('wheelCanvas');
+  const ctx = canvas.getContext('2d');
+  const winnerBox = document.getElementById('winnerBox');
+  const historyList = document.getElementById('historyList');
+  const spinBtn = document.getElementById('spinBtn');
+
+  let numbers = [];
+  let startAngle = 0;
+  let isSpinning = false;
+  let spinTimeout = null;
+  let spinAngleStart = 0;
+  let spinTime = 0;
+  let spinTimeTotal = 0;
+  let winningNumber = null;
+
+  function initWheel(count) {
+    if (isSpinning) return;
+    numbers = Array.from({length: count}, (_, i) => i + 1);
+    startAngle = 0;
+    winnerBox.style.display = 'none';
+    drawWheel();
+    spinBtn.disabled = false;
+  }
+
+  function drawWheel() {
+    const radius = canvas.width / 2 - 20;
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const segmentAngle = 2 * Math.PI / numbers.length;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + 15, 0, 2 * Math.PI);
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(startAngle);
+
+    for (let i = 0; i < numbers.length; i++) {
+      ctx.fillStyle = i % 2 === 0 ? '#fff' : '#000';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, radius, i * segmentAngle, (i + 1) * segmentAngle);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.save();
+      ctx.fillStyle = i % 2 === 0 ? '#000' : '#fff';
+      ctx.rotate(i * segmentAngle + segmentAngle / 2);
+      ctx.textAlign = 'right';
+      ctx.font = 'bold 20px Segoe UI, Tahoma, Geneva, Verdana, sans-serif';
+      ctx.fillText(numbers[i], radius - 15, 8);
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  function addNumber() {
+    if (isSpinning) return;
+    const num = parseInt(document.getElementById('addNumberInput').value);
+    if (!isNaN(num) && num > 0 && !numbers.includes(num)) {
+      numbers.push(num);
+      numbers.sort((a, b) => a - b);
+      startAngle = 0;
+      winnerBox.style.display = 'none';
+      drawWheel();
+      spinBtn.disabled = false;
+    }
+    document.getElementById('addNumberInput').value = '';
+  }
+
+  function removeNumber() {
+    if (isSpinning) return;
+    const num = parseInt(document.getElementById('removeNumberInput').value);
+    if (!isNaN(num)) {
+      numbers = numbers.filter(n => n !== num);
+      startAngle = 0;
+      winnerBox.style.display = 'none';
+      drawWheel();
+      if (numbers.length === 0) spinBtn.disabled = true;
+    }
+    document.getElementById('removeNumberInput').value = '';
+  }
+
+  function spinWheel() {
+    if (isSpinning || numbers.length === 0) return;
+    isSpinning = true;
+    winnerBox.style.display = 'none';
+    spinAngleStart = Math.random() * 10 + 10;
+    spinTime = 0;
+    spinTimeTotal = (Math.random() * 3 + 4) * 1000;
+    rotateWheel();
+  }
+
+  function rotateWheel() {
+    spinTime += 30;
+    if (spinTime >= spinTimeTotal) {
+      stopRotateWheel();
+      return;
+    }
+    const delta = easeOut(spinTime, spinAngleStart, -spinAngleStart, spinTimeTotal);
+    startAngle += delta;
+    startAngle %= 2 * Math.PI;
+    drawWheel();
+    spinTimeout = setTimeout(rotateWheel, 30);
+  }
+
+  function stopRotateWheel() {
+    clearTimeout(spinTimeout);
+    isSpinning = false;
+
+    const segmentAngle = 2 * Math.PI / numbers.length;
+    // Calcula el ángulo bajo el puntero (abajo, π/2)
+    let wedgeAngle = Math.PI/2 - (startAngle % (2 * Math.PI));
+    if (wedgeAngle < 0) wedgeAngle += 2 * Math.PI;
+    const index = Math.floor(wedgeAngle / segmentAngle) % numbers.length;
+
+    winningNumber = numbers[index];
+    winnerBox.textContent = `¡Número ganador: ${winningNumber}!`;
+    winnerBox.style.display = 'block';
+
+    const li = document.createElement('li');
+    li.textContent = winningNumber;
+    historyList.prepend(li);
+  }
+
+  function easeOut(t, b, c, d) {
+    t /= d;
+    t--;
+    return c * (t*t*t + 1) + b;
+  }
+
+  function resetWheel() {
+    if (isSpinning) return;
+    numbers = [];
+    startAngle = 0;
+    winnerBox.style.display = 'none';
+    historyList.innerHTML = '';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    spinBtn.disabled = true;
+  }
+
+  // Inicializar con 10 números
+  initWheel(10);
+
+  // Permite girar haciendo clic en el canvas
+  canvas.addEventListener('click', () => {
+    if (!isSpinning && numbers.length > 0) spinWheel();
+  });
+</script>
+
+</body>
+</html>
